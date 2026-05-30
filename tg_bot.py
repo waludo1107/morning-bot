@@ -70,7 +70,11 @@ def chat(messages, chat_id):
     )
     resp = json.loads(urllib.request.urlopen(ds_req, timeout=30).read())
     reply = resp["choices"][0]["message"]["content"].strip()
-    tg("sendMessage", {"chat_id": chat_id, "text": reply})
+    result = tg("sendMessage", {"chat_id": chat_id, "text": reply})
+    if result.get("ok"):
+        print(f"  Sent OK")
+    else:
+        print(f"  Send FAILED: {result}")
 
 # Main
 state = load_state()

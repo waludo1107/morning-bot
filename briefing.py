@@ -38,7 +38,7 @@ NEWSAPI_KEY = os.environ.get("NEWSAPI_KEY", "c2db35da8fa64b119ff66d08b4f8100c")
 news_titles = []
 
 try:
-    url = f"https://newsapi.org/v2/top-headlines?country=cn&pageSize=15&apiKey={NEWSAPI_KEY}"
+    url = f"https://newsapi.org/v2/top-headlines?country=us&pageSize=15&apiKey={NEWSAPI_KEY}"
     req = urllib.request.Request(url, headers={"User-Agent": "MorningBot/1.0"})
     data = json.loads(urllib.request.urlopen(req, timeout=15).read())
     if data.get("status") == "ok":
@@ -46,6 +46,14 @@ try:
             t = article.get("title", "")
             if t and len(t) > 5:
                 news_titles.append(t)
+        # Also get Chinese headlines via keyword search
+        url2 = f"https://newsapi.org/v2/top-headlines?q=China+economy+politics&pageSize=10&apiKey={NEWSAPI_KEY}"
+        data2 = json.loads(urllib.request.urlopen(urllib.request.Request(url2, headers={"User-Agent": "MorningBot/1.0"}), timeout=15).read())
+        if data2.get("status") == "ok":
+            for article in data2.get("articles", []):
+                t = article.get("title", "")
+                if t and len(t) > 5 and t not in news_titles:
+                    news_titles.append(t)
         print(f"  NewsAPI OK: {len(news_titles)} articles")
     else:
         print(f"  NewsAPI error: {data.get('message')}")

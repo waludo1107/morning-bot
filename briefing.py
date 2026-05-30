@@ -108,24 +108,30 @@ else:
 
 # === 4. BARK PUSH ===
 print("Pushing to Bark...")
-title = brief.strip().split("\n")[0][:80] if brief else "早安简报"
-body = brief.strip()[:1000]
 
-for i in range(5):
-    try:
-        payload = json.dumps({
-            "title": title,
-            "body": body,
-            "group": "morning",
-            "isArchive": 1
-        }).encode()
-        req = urllib.request.Request(f"{BARK_URL}/push", data=payload, method="POST")
-        req.add_header("Content-Type", "application/json")
-        resp = json.loads(urllib.request.urlopen(req, timeout=10).read())
-        print(f"  Bark OK: {resp}")
-        break
-    except Exception as e:
-        print(f"  Bark attempt {i+1}: {e}")
-        time.sleep(5)
+def bark_push(title, body):
+    """Push via GET URL - known working method"""
+    for i in range(3):
+        try:
+            url = f"{BARK_URL}/{quote(title[:50])}/{quote(body[:200])}?isArchive=1"
+            resp = json.loads(urllib.request.urlopen(
+                urllib.request.Request(url, method="POST"), timeout=10
+            ).read())
+            if resp.get("code") == 200:
+                return True
+        except Exception as e:
+            print(f"  Push retry {i+1}: {e}")
+            time.sleep(3)
+    return False
+
+# Split briefing into weather + news
+lines = brief.strip().split("\n")
+weather_line = lines[0][:50] if lines else "早安"
+news_part = "\n".join(lines[1:])[:200] if len(lines) > 1 else brief[:200]
+
+if bark_push(weather_line, news_part if news_part.strip() else weather_line):
+    print("  Bark OK")
+else:
+    print("  Bark FAILED")
 
 print("Done!")

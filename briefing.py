@@ -34,31 +34,44 @@ for attempt in range(3):
 
 # === 2. NEWS ===
 print("Fetching news...")
-NEWSAPI_KEY = os.environ.get("NEWSAPI_KEY", "c2db35da8fa64b119ff66d08b4f8100c")
 news_titles = []
 
-try:
-    url = f"https://newsapi.org/v2/top-headlines?country=us&pageSize=15&apiKey={NEWSAPI_KEY}"
-    req = urllib.request.Request(url, headers={"User-Agent": "MorningBot/1.0"})
-    data = json.loads(urllib.request.urlopen(req, timeout=15).read())
-    if data.get("status") == "ok":
-        for article in data.get("articles", []):
-            t = article.get("title", "")
-            if t and len(t) > 5:
-                news_titles.append(t)
-        # Also get Chinese headlines via keyword search
-        url2 = f"https://newsapi.org/v2/top-headlines?q=China+economy+politics&pageSize=10&apiKey={NEWSAPI_KEY}"
-        data2 = json.loads(urllib.request.urlopen(urllib.request.Request(url2, headers={"User-Agent": "MorningBot/1.0"}), timeout=15).read())
-        if data2.get("status") == "ok":
-            for article in data2.get("articles", []):
-                t = article.get("title", "")
-                if t and len(t) > 5 and t not in news_titles:
+# Use rss2json as free proxy to fetch Google News RSS
+rss_urls = [
+    "https://news.google.com/rss?hl=zh-CN&gl=CN&ceid=CN:zh-Hans",
+    "https://news.google.com/rss/headlines/section/topic/WORLD?hl=zh-CN",
+]
+for rss_url in rss_urls:
+    if len(news_titles) >= 12:
+        break
+    try:
+        proxy_url = f"https://api.rss2json.com/v1/api.json?rss_url={quote(rss_url, safe='')}"
+        print(f"  Trying rss2json...")
+        req = urllib.request.Request(proxy_url, headers={"User-Agent": "MorningBot/1.0"})
+        data = json.loads(urllib.request.urlopen(req, timeout=20).read())
+        if data.get("status") == "ok":
+            for item in data.get("items", []):
+                t = item.get("title", "").strip()
+                if t and len(t) > 8 and t not in news_titles:
                     news_titles.append(t)
-        print(f"  NewsAPI OK: {len(news_titles)} articles")
-    else:
-        print(f"  NewsAPI error: {data.get('message')}")
-except Exception as e:
-    print(f"  NewsAPI failed: {e}")
+            print(f"  Got {len(news_titles)} titles so far")
+    except Exception as e:
+        print(f"  rss2json failed: {e}")
+
+# Fallback: try direct Google News RSS (works on GitHub Actions US servers)
+if not news_titles:
+    try:
+        req = urllib.request.Request(rss_urls[0], headers={"User-Agent": "curl/8.0"})
+        xml_data = urllib.request.urlopen(req, timeout=15).read().decode("utf-8", errors="replace")
+        titles = re.findall(r'<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</title>', xml_data)
+        for t in titles[2:]:
+            t = re.sub(r'<[^>]+>', '', t).strip()
+            t = re.sub(r'&[a-z]+;', '', t)
+            if len(t) > 8 and t not in news_titles:
+                news_titles.append(t)
+        print(f"  Direct RSS: {len(news_titles)} titles")
+    except Exception as e:
+        print(f"  Direct RSS failed: {e}")
 
 print(f"Total headlines: {len(news_titles)}")
 

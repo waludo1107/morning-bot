@@ -1,4 +1,4 @@
-import urllib.request, json, datetime, time, os, xml.etree.ElementTree as ET
+import urllib.request, json, datetime, time, os, re
 from urllib.parse import quote
 
 DEEPSEEK_KEY = os.environ["DEEPSEEK_KEY"]
@@ -11,7 +11,7 @@ weekday = ["一","二","三","四","五","六","日"][datetime.date.today().week
 
 # === 1. WEATHER ===
 print("Fetching weather...")
-weather_text = None
+weather_text = "延吉天气: (获取失败)"
 for attempt in range(3):
     try:
         req = urllib.request.Request(
@@ -21,78 +21,110 @@ for attempt in range(3):
         wdata = json.loads(urllib.request.urlopen(req, timeout=10).read())
         cc = wdata["current_condition"][0]
         tw = wdata["weather"][0]
-        weather_text = f"延吉天气: {cc['weatherDesc'][0]['value']}, {cc['temp_C']}°C(体感{cc['FeelsLikeC']}°C), 最高{tw['maxtempC']}°C/最低{tw['mintempC']}°C, 湿度{cc['humidity']}%, 风速{cc['windspeedKmph']}km/h"
+        weather_text = (
+            f"延吉天气: {cc['weatherDesc'][0]['value']}, {cc['temp_C']}°C"
+            f"(体感{cc['FeelsLikeC']}°C), 最高{tw['maxtempC']}°C/最低{tw['mintempC']}°C, "
+            f"湿度{cc['humidity']}%, 风速{cc['windspeedKmph']}km/h"
+        )
+        print(f"  Weather OK")
         break
     except Exception as e:
-        print(f"Weather attempt {attempt+1}: {e}")
+        print(f"  Weather attempt {attempt+1}: {e}")
         time.sleep(2)
-if not weather_text:
-    weather_text = "延吉天气: (获取失败)"
 
-# === 2. NEWS ===
+# === 2. NEWS (multiple sources with fallback) ===
 print("Fetching news...")
-news_entries = []
-news_urls = [
-    "https://news.google.com/rss?hl=zh-CN&gl=CN&ceid=CN:zh-Hans",
-    "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml",
+feeds = [
+    ("Google News CN", "https://news.google.com/rss?hl=zh-CN&gl=CN&ceid=CN:zh-Hans&num=15"),
+    ("BBC Chinese", "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml"),
+    ("Google News Top", "https://news.google.com/rss?hl=zh-CN&gl=CN&ceid=CN:zh-Hans"),
 ]
-for url in news_urls:
+news_titles = []
+
+for source_name, url in feeds:
+    if news_titles:
+        break
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        xml_data = urllib.request.urlopen(req, timeout=10).read()
-        root = ET.fromstring(xml_data)
-        for item in root.iter("item"):
-            title = item.find("title").text if item.find("title") is not None else ""
-            source = item.find("source").text if item.find("source") is not None else ""
-            news_entries.append(f"- {title}")
-            if len(news_entries) >= 12:
-                break
-        if len(news_entries) >= 12:
-            break
+        print(f"  Trying {source_name}...")
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; bot)"})
+        xml_data = urllib.request.urlopen(req, timeout=15).read().decode("utf-8", errors="replace")
+        print(f"  Got {len(xml_data)} bytes from {source_name}")
+
+        # Parse titles using regex to handle all RSS formats reliably
+        titles = re.findall(r'<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</title>', xml_data)
+        print(f"  Found {len(titles)} titles")
+        for t in titles[2:]:  # Skip channel title and feed title
+            t = t.strip()
+            t = re.sub(r'<[^>]+>', '', t)  # Strip HTML
+            t = re.sub(r'&[a-z]+;', '', t)  # Strip entities
+            if len(t) > 8 and t not in news_titles:
+                news_titles.append(t)
+                if len(news_titles) >= 15:
+                    break
     except Exception as e:
-        print(f"News source {url}: {e}")
+        print(f"  {source_name} failed: {e}")
 
-news_text = "\n".join(news_entries[:12]) if news_entries else "新闻获取失败"
+print(f"Total headlines: {len(news_titles)}")
+news_text = "\n".join(f"- {t}" for t in news_titles[:15]) if news_titles else "(新闻源暂时不可用，请稍后查看)"
 
-# === 3. DEEPSEEK ANALYSIS ===
+# === 3. DEEPSEEK BRIEFING ===
 print("Generating briefing...")
-ds_req = urllib.request.Request(
-    "https://api.deepseek.com/v1/chat/completions",
-    data=json.dumps({
-        "model": "deepseek-chat",
-        "messages": [{
-            "role": "user",
-            "content": f"""今天是{today_str}，星期{weekday}。
+ds_prompt = f"""今天是{today_str}，星期{weekday}。
 
+【天气】
 {weather_text}
 
-以下是今日要闻：
+【今日新闻头条】
 {news_text}
 
-请生成一份早安简报，包含：
-1. 天气提醒（一两句话）
-2. 从要闻中选出2-3条最重要的政治经济大事，简要讲解其背景和影响（每条2-3句话）
+请生成一份早安简报：
 
-语气自然简洁，不要啰嗦。总共控制在200字以内。"""
-        }],
-        "max_tokens": 500,
-    }).encode(),
-    headers={"Content-Type": "application/json", "Authorization": f"Bearer {DEEPSEEK_KEY}"}
-)
-ds_resp = json.loads(urllib.request.urlopen(ds_req, timeout=30).read())
-brief = ds_resp["choices"][0]["message"]["content"].strip()
+1. ☀️ 天气提醒（一句话，是否需要带伞、加外套等）
 
-# === 4. BARK PUSH ===
+2. 📰 今日要闻（从上面的新闻头条中选出2-3条最重要的政治经济事件，每条用2-3句话讲解其背景和可能的影响。必须是上面列出的新闻）
+
+回复控制在300字以内，不要输出任何其他内容。"""
+
+try:
+    ds_req = urllib.request.Request(
+        "https://api.deepseek.com/v1/chat/completions",
+        data=json.dumps({
+            "model": "deepseek-chat",
+            "messages": [{"role": "user", "content": ds_prompt}],
+            "max_tokens": 500,
+        }).encode(),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {DEEPSEEK_KEY}"}
+    )
+    ds_resp = json.loads(urllib.request.urlopen(ds_req, timeout=30).read())
+    brief = ds_resp["choices"][0]["message"]["content"].strip()
+    print(f"  Briefing generated ({len(brief)} chars)")
+except Exception as e:
+    print(f"  DeepSeek failed: {e}")
+    brief = f"{today_str} 星期{weekday}\n\n{weather_text}\n\n{news_text[:300]}"
+
+# === 4. SAVE LOG ===
+yesterday = (datetime.date.today() - datetime.timedelta(days=1)).strftime("%m%d")
+log_path = f"/tmp/briefing_{yesterday}.txt"
+try:
+    with open(log_path, "w", encoding="utf-8") as f:
+        f.write(brief)
+    print(f"  Log saved: {log_path}")
+except:
+    pass
+
+# === 5. BARK PUSH ===
 print("Pushing to Bark...")
 brief_short = brief.split("\n")[0][:120]
 for i in range(5):
     try:
         bark_url = f"{BARK_URL}/{quote('morning')}/{quote(brief_short)}?isArchive=1"
-        resp = json.loads(urllib.request.urlopen(urllib.request.Request(bark_url, method="POST"), timeout=10).read())
-        print(f"Bark: {resp}")
+        resp = json.loads(urllib.request.urlopen(
+            urllib.request.Request(bark_url, method="POST"), timeout=10
+        ).read())
+        print(f"  Bark OK: {resp}")
         break
     except Exception as e:
-        print(f"Bark attempt {i+1}: {e}")
+        print(f"  Bark attempt {i+1}: {e}")
         time.sleep(5)
 
 print("Done!")

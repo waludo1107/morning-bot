@@ -71,19 +71,15 @@ news_text = "\n".join(f"- {t}" for t in news_titles[:15]) if news_titles else "(
 print("Generating briefing...")
 ds_prompt = f"""今天是{today_str}，星期{weekday}。
 
-【天气】
-{weather_text}
+【天气】{weather_text}
 
-【今日新闻头条】
-{news_text}
+【新闻头条】{news_text}
 
-请生成一份早安简报：
+请生成一份早安简报。要求：
+1. 天气提醒（一句话，是否需要带伞、加外套等）
+2. 从上面新闻头条中选2-3条最重要的政治经济事件，讲解背景和影响（每条2-3句话）
 
-1. ☀️ 天气提醒（一句话，是否需要带伞、加外套等）
-
-2. 📰 今日要闻（从上面的新闻头条中选出2-3条最重要的政治经济事件，每条用2-3句话讲解其背景和可能的影响。必须是上面列出的新闻）
-
-回复控制在300字以内，不要输出任何其他内容。"""
+回复控制在300字以内。用纯文本，不要加emoji。"""
 
 try:
     ds_req = urllib.request.Request(
@@ -114,18 +110,21 @@ except:
 
 # === 5. BARK PUSH ===
 print("Pushing to Bark...")
-# First line as title, full brief as body
-lines = brief.split("\n")
-title = lines[0][:100] if lines else "早安简报"
-body = "\n".join(lines[1:])[:500] if len(lines) > 1 else ""
-push_text = f"{title}\n\n{body}" if body else title
+title = brief.strip().split("\n")[0][:80] if brief else "早安简报"
+body = brief.strip()[:1000]
 
 for i in range(5):
     try:
-        bark_url = f"{BARK_URL}/{quote(title[:80])}/{quote(push_text[:600])}?isArchive=1"
-        resp = json.loads(urllib.request.urlopen(
-            urllib.request.Request(bark_url, method="POST"), timeout=10
-        ).read())
+        payload = json.dumps({
+            "title": title,
+            "body": body,
+            "group": "morning",
+            "isArchive": 1
+        }).encode()
+        bark_url = f"{BARK_URL}/push"
+        req = urllib.request.Request(bark_url, data=payload, method="POST")
+        req.add_header("Content-Type", "application/json")
+        resp = json.loads(urllib.request.urlopen(req, timeout=10).read())
         print(f"  Bark OK: {resp}")
         break
     except Exception as e:

@@ -114,10 +114,15 @@ except:
 
 # === 5. BARK PUSH ===
 print("Pushing to Bark...")
-brief_short = brief.split("\n")[0][:120]
+# First line as title, full brief as body
+lines = brief.split("\n")
+title = lines[0][:100] if lines else "早安简报"
+body = "\n".join(lines[1:])[:500] if len(lines) > 1 else ""
+push_text = f"{title}\n\n{body}" if body else title
+
 for i in range(5):
     try:
-        bark_url = f"{BARK_URL}/{quote('morning')}/{quote(brief_short)}?isArchive=1"
+        bark_url = f"{BARK_URL}/{quote(title[:80])}/{quote(push_text[:600])}?isArchive=1"
         resp = json.loads(urllib.request.urlopen(
             urllib.request.Request(bark_url, method="POST"), timeout=10
         ).read())

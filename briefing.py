@@ -35,9 +35,11 @@ for attempt in range(3):
 # === 2. NEWS (multiple sources with fallback) ===
 print("Fetching news...")
 feeds = [
-    ("Google News CN", "https://news.google.com/rss?hl=zh-CN&gl=CN&ceid=CN:zh-Hans&num=15"),
+    ("Xinhua", "http://www.xinhuanet.com/politics/xhll.xml"),
+    ("People Daily", "http://www.people.com.cn/rss/politics.xml"),
+    ("China Daily", "https://www.chinadaily.com.cn/rss/world_rss.xml"),
+    ("RSSHub Toutiao", "https://rsshub.app/toutiao/hot"),
     ("BBC Chinese", "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml"),
-    ("Google News Top", "https://news.google.com/rss?hl=zh-CN&gl=CN&ceid=CN:zh-Hans"),
 ]
 news_titles = []
 

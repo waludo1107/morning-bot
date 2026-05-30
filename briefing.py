@@ -34,34 +34,23 @@ for attempt in range(3):
 
 # === 2. NEWS ===
 print("Fetching news...")
-feeds = [
-    ("People Daily", "http://www.people.com.cn/rss/politics.xml"),
-    ("China Daily", "https://www.chinadaily.com.cn/rss/world_rss.xml"),
-    ("RSSHub Toutiao", "https://rsshub.app/toutiao/hot"),
-    ("BBC Chinese", "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml"),
-]
+NEWSAPI_KEY = os.environ.get("NEWSAPI_KEY", "c2db35da8fa64b119ff66d08b4f8100c")
 news_titles = []
 
-for source_name, url in feeds:
-    if news_titles:
-        break
-    try:
-        print(f"  Trying {source_name}...")
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; bot)"})
-        xml_data = urllib.request.urlopen(req, timeout=15).read().decode("utf-8", errors="replace")
-        print(f"  Got {len(xml_data)} bytes from {source_name}")
-        titles = re.findall(r'<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</title>', xml_data)
-        print(f"  Found {len(titles)} raw titles")
-        for t in titles[2:]:
-            t = t.strip()
-            t = re.sub(r'<[^>]+>', '', t)
-            t = re.sub(r'&[a-z]+;', '', t)
-            if len(t) > 8 and t not in news_titles:
+try:
+    url = f"https://newsapi.org/v2/top-headlines?country=cn&pageSize=15&apiKey={NEWSAPI_KEY}"
+    req = urllib.request.Request(url, headers={"User-Agent": "MorningBot/1.0"})
+    data = json.loads(urllib.request.urlopen(req, timeout=15).read())
+    if data.get("status") == "ok":
+        for article in data.get("articles", []):
+            t = article.get("title", "")
+            if t and len(t) > 5:
                 news_titles.append(t)
-                if len(news_titles) >= 15:
-                    break
-    except Exception as e:
-        print(f"  {source_name} failed: {e}")
+        print(f"  NewsAPI OK: {len(news_titles)} articles")
+    else:
+        print(f"  NewsAPI error: {data.get('message')}")
+except Exception as e:
+    print(f"  NewsAPI failed: {e}")
 
 print(f"Total headlines: {len(news_titles)}")
 
